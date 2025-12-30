@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gift Store Checkout</title>
+<style>
+body{font-family: Arial, sans-serif; margin:20px;}
+.section{display:none;} 
+.section.active{display:block;}
+.gift-card{cursor:pointer;border:1px solid #ccc;padding:10px;margin:5px;display:inline-block;width:150px;text-align:center;}
+.selected{border:2px solid #ff4081;}
+input, textarea{margin-bottom:10px;width:100%;padding:8px;box-sizing:border-box;}
+button{padding:10px 20px;background:#ff4081;color:white;border:none;cursor:pointer;margin-top:10px;}
+button:hover{opacity:0.9;}
+</style>
+</head>
+<body>
+
+<!-- Gift Selection -->
+<div id="curated-section" class="section active">
+<h2>Choose a Gift</h2>
+<div class="gift-card" data-name="Gift Box A" data-price="500">
+Gift Box A<br>₹500
+<button class="customize-btn">Select</button>
+</div>
+<div class="gift-card" data-name="Gift Box B" data-price="700">
+Gift Box B<br>₹700
+<button class="customize-btn">Select</button>
+</div>
+</div>
+
+<!-- Letter Section -->
+<div id="letter-section" class="section">
+<h2>Write a Letter</h2>
+Recipient: <input id="recipient" placeholder="Recipient Name"><br>
+Message: <textarea id="message" placeholder="Your message"></textarea><br>
+Signature: <input id="signature" placeholder="Your Name"><br>
+<button id="letter-next">Next</button>
+<button id="back-to-gifts">Back</button>
+</div>
+
+<!-- Checkout Section -->
+<div id="checkout-section" class="section">
+<h2>Checkout</h2>
+Name: <input id="customer-name" placeholder="Your Name"><br>
+Email: <input id="customer-email" placeholder="Email"><br>
+Phone: <input id="customer-phone" placeholder="Phone"><br>
+Address: <textarea id="customer-address" placeholder="Shipping Address"></textarea><br>
+<button id="pay-now">Pay Now</button>
+<button id="back-to-letter">Back</button>
+</div>
+
+<!-- Thank You Section -->
+<div id="thankyou-section" class="section">
+<h2>Thank you!</h2>
+<p>Tracking ID: <span id="tracking-id"></span></p>
+<p>Expected Delivery: <span id="expected-date"></span></p>
+</div>
+
+<script src="https://sdk.cashfree.com/js/ui/1.0.13/cashfree.js"></script>
+
+<script>
+let order = {};
+
+// Navigation
+document.querySelectorAll('.customize-btn').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+        const card = e.target.parentElement;
+        order.gift = card.dataset.name;
+        order.price = card.dataset.price;
+        document.getElementById('curated-section').classList.remove('active');
+        document.getElementById('letter-section').classList.add('active');
+    });
+});
+
+document.getElementById('letter-next').onclick = ()=>{
+    order.recipient = document.getElementById('recipient').value;
+    order.message = document.getElementById('message').value;
+    order.signature = document.getElementById('signature').value;
+    document.getElementById('letter-section').classList.remove('active');
+    document.getElementById('checkout-section').classList.add('active');
+};
+
+document.getElementById('back-to-gifts').onclick = ()=>{
+    document.getElementById('letter-section').classList.remove('active');
+    document.getElementById('curated-section').classList.add('active');
+};
+
+document.getElementById('back-to-letter').onclick = ()=>{
+    document.getElementById('checkout-section').classList.remove('active');
+    document.getElementById('letter-section').classList.add('active');
+};
+
+// Payment
+document.getElementById('pay-now').onclick = async ()=>{
+    order.name = document.getElementById('customer-name').value;
+    order.email = document.getElementById('customer-email').value;
+    order.phone = document.getElementById('customer-phone').value;
+    order.address = document.getElementById('customer-address').value;
+    order.orderId = 'ORDER' + Math.floor(Math.random() * 1000000);
+
+    try {
+        const res = await fetch('/api/generateToken', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify(order)
+        });
+
+        const text = await res.text();
+        console.log('Raw server response:', text);
+
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch(err) {
+            alert('Server did not return valid JSON. Check console.');
+            console.error('JSON parse error:', err, text);
+            return;
+        }
+
+        if(data.cftoken){
+            Cashfree.init({
+                orderId: order.orderId,
+                orderAmount: order.price,
+                orderCurrency: 'INR',
+                cftoken: data.cftoken,
+                environment: 'TEST', // change to 'PROD' when live
+                onSuccess: function(response){
+                    document.getElementById('checkout-section').classList.remove('active');
+                    document.getElementById('thankyou-section').classList.add('active');
+                    document.getElementById('tracking-id').innerText = response.order_id;
+                    let deliveryDate = new Date();
+                    deliveryDate.setDate(deliveryDate.getDate() + 5);
+                    document.getElementById('expected-date').innerText = deliveryDate.toDateString();
+                },
+                onFailure: function(err){
+                    alert('Payment failed!');
+                    console.error(err);
+                }
+            });
+        } else {
+            alert('Failed to get payment token.');
+            console.error('Invalid token response:', data);
+        }
+    } catch(err){
+        alert('Error connecting to payment gateway.');
+        console.error(err);
+    }
+};
+</script>
+</body>
+</html>
